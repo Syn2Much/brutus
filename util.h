@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_UTIL_H
-#define ARMSCAN_UTIL_H
+#ifndef BRUTUS_UTIL_H
+#define BRUTUS_UTIL_H
 #include <stdint.h>
 #include <stddef.h>
 

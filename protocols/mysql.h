@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_MYSQL_H
-#define ARMSCAN_MYSQL_H
+#ifndef BRUTUS_MYSQL_H
+#define BRUTUS_MYSQL_H
 
 typedef struct {
     int timeout;

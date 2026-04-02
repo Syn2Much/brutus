@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_REDIS_H
-#define ARMSCAN_REDIS_H
+#ifndef BRUTUS_REDIS_H
+#define BRUTUS_REDIS_H
 
 typedef struct {
     int timeout;

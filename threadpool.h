@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_THREADPOOL_H
-#define ARMSCAN_THREADPOOL_H
+#ifndef BRUTUS_THREADPOOL_H
+#define BRUTUS_THREADPOOL_H
 #include <pthread.h>
 
 typedef struct {

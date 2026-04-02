@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_PBKDF2_H
-#define ARMSCAN_PBKDF2_H
+#ifndef BRUTUS_PBKDF2_H
+#define BRUTUS_PBKDF2_H
 #include <stdint.h>
 #include <stddef.h>
 

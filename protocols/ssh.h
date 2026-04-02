@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_SSH_H
-#define ARMSCAN_SSH_H
+#ifndef BRUTUS_SSH_H
+#define BRUTUS_SSH_H
 
 typedef struct {
     int connect_timeout;

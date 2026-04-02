@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_SHA1_H
-#define ARMSCAN_SHA1_H
+#ifndef BRUTUS_SHA1_H
+#define BRUTUS_SHA1_H
 #include <stdint.h>
 #include <stddef.h>
 

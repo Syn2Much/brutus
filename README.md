@@ -1,4 +1,4 @@
-# armscan
+# brutus
 
 Standalone multi-protocol credential scanner. Pure C, zero external dependencies.
 
@@ -17,7 +17,7 @@ Standalone multi-protocol credential scanner. Pure C, zero external dependencies
 make
 ```
 
-Produces a single `armscan` binary. Requires only `gcc`, `make`, and `pthreads`.
+Produces a single `brutus` binary. Requires only `gcc`, `make`, and `pthreads`.
 
 ```
 make static    # fully static binary
@@ -27,7 +27,7 @@ make clean
 ## Usage
 
 ```
-armscan <protocol> [options]
+brutus <protocol> [options]
 
 Options:
   -T, --targets FILE       Target list (one IP per line)
@@ -49,19 +49,19 @@ Options:
 
 ```sh
 # SSH scan with credential list
-armscan ssh -T targets.txt -C creds.txt -j 64
+brutus ssh -T targets.txt -C creds.txt -j 64
 
 # Single MySQL target
-armscan mysql -t 10.0.0.50 -c root:password
+brutus mysql -t 10.0.0.50 -c root:password
 
 # Redis with command execution on hit
-armscan redis -T hosts.txt -c ':secretpass' -x 'CONFIG GET dir'
+brutus redis -T hosts.txt -c ':secretpass' -x 'CONFIG GET dir'
 
 # PostgreSQL with JSON output
-armscan pgsql -T targets.txt -C creds.txt -f json -o results.json
+brutus pgsql -T targets.txt -C creds.txt -f json -o results.json
 
 # Redis password-only creds (no colon = password-only for legacy AUTH)
-armscan redis -T hosts.txt -C passwords.txt
+brutus redis -T hosts.txt -C passwords.txt
 ```
 
 ## Credential File Format
@@ -113,7 +113,7 @@ Supports PostgreSQL 14+ default authentication (SCRAM-SHA-256, RFC 5802) in addi
 ## Architecture
 
 ```
-armscan/
+brutus/
   main.c              CLI entry, getopt, protocol dispatch
   threadpool.c         pthread work queue (one target per work item)
   output.c             thread-safe reporting (human/json/csv)

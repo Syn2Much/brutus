@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_PGSQL_H
-#define ARMSCAN_PGSQL_H
+#ifndef BRUTUS_PGSQL_H
+#define BRUTUS_PGSQL_H
 
 typedef struct {
     int timeout;

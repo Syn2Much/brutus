@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_BIGNUM_H
-#define ARMSCAN_BIGNUM_H
+#ifndef BRUTUS_BIGNUM_H
+#define BRUTUS_BIGNUM_H
 #include <stdint.h>
 
 #define BN_MAX 520

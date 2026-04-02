@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_AES128_H
-#define ARMSCAN_AES128_H
+#ifndef BRUTUS_AES128_H
+#define BRUTUS_AES128_H
 #include <stdint.h>
 #include <stddef.h>
 

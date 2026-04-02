@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_TARGET_H
-#define ARMSCAN_TARGET_H
+#ifndef BRUTUS_TARGET_H
+#define BRUTUS_TARGET_H
 
 typedef struct {
     char **list;

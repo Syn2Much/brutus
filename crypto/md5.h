@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_MD5_H
-#define ARMSCAN_MD5_H
+#ifndef BRUTUS_MD5_H
+#define BRUTUS_MD5_H
 #include <stdint.h>
 #include <stddef.h>
 

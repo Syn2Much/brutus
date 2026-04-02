@@ -1,5 +1,5 @@
-#ifndef ARMSCAN_OUTPUT_H
-#define ARMSCAN_OUTPUT_H
+#ifndef BRUTUS_OUTPUT_H
+#define BRUTUS_OUTPUT_H
 #include <stdio.h>
 #include <pthread.h>
 

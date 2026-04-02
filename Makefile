@@ -1,7 +1,7 @@
 CC       ?= gcc
 CFLAGS    = -Wall -Wextra -O2 -std=c99 -D_POSIX_C_SOURCE=200809L
 LDFLAGS   = -lpthread
-BIN       = armscan
+BIN       = brutus
 
 SRCS = main.c threadpool.c output.c target.c util.c \
        protocols/ssh.c protocols/mysql.c protocols/pgsql.c protocols/redis.c \
