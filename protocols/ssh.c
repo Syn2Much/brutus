@@ -17,7 +17,7 @@
 #include "../crypto/sha1.h"
 #include "../crypto/aes128.h"
 #include "../crypto/bignum.h"
-#include "../util.h"
+#include "../core/util.h"
 
 /* ======================================================================
    CONSTANTS

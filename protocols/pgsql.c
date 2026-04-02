@@ -14,7 +14,7 @@
 #include "../crypto/md5.h"
 #include "../crypto/sha256.h"
 #include "../crypto/pbkdf2.h"
-#include "../util.h"
+#include "../core/util.h"
 
 /* ---- Base64 encode/decode (small, static, for SCRAM only) ---- */
 

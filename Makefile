@@ -3,7 +3,7 @@ CFLAGS    = -Wall -Wextra -O2 -std=c99 -D_POSIX_C_SOURCE=200809L
 LDFLAGS   = -lpthread
 BIN       = brutus
 
-SRCS = main.c threadpool.c output.c target.c util.c \
+SRCS = main.c core/threadpool.c core/output.c core/target.c core/util.c \
        protocols/ssh.c protocols/mysql.c protocols/pgsql.c protocols/redis.c \
        crypto/sha256.c crypto/sha1.c crypto/md5.c \
        crypto/aes128.c crypto/bignum.c crypto/pbkdf2.c

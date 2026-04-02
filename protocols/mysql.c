@@ -11,7 +11,7 @@
 
 #include "mysql.h"
 #include "../crypto/sha1.h"
-#include "../util.h"
+#include "../core/util.h"
 
 /* MySQL native auth: SHA1(pass) XOR SHA1(salt + SHA1(SHA1(pass))) */
 static void mysql_native_auth(const uint8_t *salt, int salt_len,

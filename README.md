@@ -115,10 +115,11 @@ Supports PostgreSQL 14+ default authentication (SCRAM-SHA-256, RFC 5802) in addi
 ```
 brutus/
   main.c              CLI entry, getopt, protocol dispatch
-  threadpool.c         pthread work queue (one target per work item)
-  output.c             thread-safe reporting (human/json/csv)
-  target.c             target + credential file parsing
-  util.c               urandom, tcp_connect helper
+  core/
+    threadpool.c       pthread work queue (one target per work item)
+    output.c           thread-safe reporting (human/json/csv)
+    target.c           target + credential file parsing
+    util.c             urandom, tcp_connect helper
   protocols/
     ssh.c              SSH-2.0 (DH, AES-128-CTR, HMAC-SHA-256/SHA-1)
     mysql.c            MySQL native password auth

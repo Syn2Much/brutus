@@ -4,9 +4,9 @@
 #include <getopt.h>
 #include <time.h>
 
-#include "threadpool.h"
-#include "output.h"
-#include "target.h"
+#include "core/threadpool.h"
+#include "core/output.h"
+#include "core/target.h"
 #include "protocols/ssh.h"
 #include "protocols/mysql.h"
 #include "protocols/pgsql.h"

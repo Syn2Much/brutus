@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 
 #include "redis.h"
-#include "../util.h"
+#include "../core/util.h"
 
 /* Send a RESP command and read response line */
 static int redis_cmd(int fd, const char *cmd, char *resp, int respsz) {
