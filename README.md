@@ -134,3 +134,14 @@ brutus/
 ```
 
 All crypto is embedded — no OpenSSL, no libsodium, no external libraries.
+
+## Work in Progress
+
+- Honeypot detection
+- FTP protocol support
+- IPv6 support
+- Proxy support (SOCKS/HTTP)
+- `caching_sha2_password` for MySQL 8.0+
+- SSH key authentication
+- Command execution for MySQL/PostgreSQL
+- SSH command output capture
