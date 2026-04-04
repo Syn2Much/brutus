@@ -1,6 +1,6 @@
 # Brutus 
 
-Standalone multi-protocol credential scanner. Pure C, zero external dependencies.    
+Standalone multi-protocol credential scanner. Pure C, zero external dependencies. Two inputs: target & cred list + additional flags.
 
 ## Protocols
 
