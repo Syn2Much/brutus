@@ -1,6 +1,24 @@
-# brutus
-
-Standalone multi-protocol credential scanner. Pure C, zero external dependencies.
+# 
+```                                                                          
+                           ***** **                                                                 
+                        ******  ***                                  *                              
+                       **   *  * **                                 **                              
+                      *    *  *  **                                 **                              
+                          *  *   *    ***  ****    **   ****      ******** **   ****        ****    
+                         ** **  *      **** **** *  **    ***  * ********   **    ***  *   * **** * 
+                         ** ** *        **   ****   **     ****     **      **     ****   **  ****  
+                         ** ***         **          **      **      **      **      **   ****       
+                         ** ** ***      **          **      **      **      **      **     ***      
+                         ** **   ***    **          **      **      **      **      **       ***    
+                         *  **     **   **          **      **      **      **      **         ***  
+                            *      **   **          **      **      **      **      **    ****  **  
+                        ****     ***    ***          ******* **     **       ******* **  * **** *   
+                       *  ********       ***          *****   **     **       *****   **    ****    
+                      *     ****                                                                    
+                      *                                                                             
+                       **
+                                Standalone multi-protocol credential scanner. Pure C, zero external dependencies.                                          
+```
 
 ## Protocols
 
@@ -97,19 +115,6 @@ anotherpassword
 ssh,hit,192.168.1.10,root,toor,SSH-2.0-OpenSSH_8.2p1
 ```
 
-## SSH Multi-Kex
-
-The SSH scanner negotiates key exchange automatically. It offers three algorithms in preference order:
-
-1. `diffie-hellman-group14-sha256` — default for modern OpenSSH 7.0+
-2. `diffie-hellman-group14-sha1` — fallback for older OpenSSH / dropbear
-3. `diffie-hellman-group1-sha1` — fallback for embedded / legacy devices
-
-If the server doesn't support any of these, the target is skipped immediately with a `kex-unsupported` error — no credentials are wasted.
-
-## PostgreSQL SCRAM-SHA-256
-
-Supports PostgreSQL 14+ default authentication (SCRAM-SHA-256, RFC 5802) in addition to legacy MD5 and cleartext. Auth method is auto-detected from the server's response.
 
 ## Architecture
 
@@ -143,7 +148,6 @@ All crypto is embedded — no OpenSSL, no libsodium, no external libraries.
 - FTP protocol support
 - IPv6 support
 - Proxy support (SOCKS/HTTP)
-- `caching_sha2_password` for MySQL 8.0+
 - SSH key authentication
 - Command execution for MySQL/PostgreSQL
 - SSH command output capture
