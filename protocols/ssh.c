@@ -1,12 +1,13 @@
 /* ssh.c -- SSH 2.0 credential scanner (single-target session API)
    Extracted from bot/ssh.c, scaffolding removed.
-   Multi-kex: group14-sha256 (primary), group14-sha1, group1-sha1 (fallback).
+   Multi-kex: curve25519-sha256 (primary), group14-sha256, group14-sha1, group1-sha1 (fallback).
    Two-level API: ssh_connect() + ssh_auth() for session reuse.
    Uses shared crypto/ libraries instead of inline implementations. */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <unistd.h>
 #include <sys/socket.h>
 #include <poll.h>
@@ -17,6 +18,7 @@
 #include "../crypto/sha1.h"
 #include "../crypto/aes128.h"
 #include "../crypto/bignum.h"
+#include "../crypto/curve25519.h"
 #include "../core/util.h"
 
 /* ======================================================================
@@ -46,6 +48,7 @@
 
 typedef enum {
     KEX_NONE = -1,
+    KEX_CURVE25519_SHA256,
     KEX_DH_GROUP14_SHA256,
     KEX_DH_GROUP14_SHA1,
     KEX_DH_GROUP1_SHA1
@@ -256,11 +259,11 @@ static int ssh_recv_packet(ssh_session_t *s, uint8_t *payload, size_t max_payloa
    KEX NEGOTIATION
    ====================================================================== */
 
-/* Build KEXINIT packet -- offers all three kex algorithms */
+/* Build KEXINIT packet -- offers curve25519 + DH fallbacks */
 static int ssh_build_kexinit(uint8_t *buf) {
     int pos = 0;
     int i;
-    const char *kex_alg = "diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1";
+    const char *kex_alg = "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1";
     const char *host_key = "ssh-rsa,ssh-ed25519";
     const char *cipher = "aes128-ctr";
     const char *mac = "hmac-sha2-256,hmac-sha1";
@@ -331,9 +334,19 @@ static kex_algo_t ssh_select_kex(const uint8_t *server_kexinit, int server_kexin
     /* Check each of our algorithms in preference order against server's kex list */
     /* We need to check each one against the first name-list (kex algorithms) */
     {
+        int off_c25519 = offset;
+        int off_c25519_libssh = offset;
         int off_g14_256 = offset;
         int off_g14_sha1 = offset;
         int off_g1_sha1 = offset;
+
+        if (ssh_namelist_contains(server_kexinit, server_kexinit_len,
+                                  &off_c25519, "curve25519-sha256"))
+            return KEX_CURVE25519_SHA256;
+
+        if (ssh_namelist_contains(server_kexinit, server_kexinit_len,
+                                  &off_c25519_libssh, "curve25519-sha256@libssh.org"))
+            return KEX_CURVE25519_SHA256;
 
         if (ssh_namelist_contains(server_kexinit, server_kexinit_len,
                                   &off_g14_256, "diffie-hellman-group14-sha256"))
@@ -433,6 +446,9 @@ static int ssh_handshake(ssh_session_t *s) {
     const uint8_t *dh_prime;
     int dh_size;
     int hash_len;
+    /* Curve25519 variables */
+    uint8_t c25519_priv[32], c25519_pub[32], c25519_shared[32];
+    uint8_t c25519_server_pub[32];
 
     /* 1. Send client banner */
     if (ssh_write_raw(s, (const uint8_t *)ssh_client_banner, strlen(ssh_client_banner)) < 0)
@@ -473,6 +489,9 @@ static int ssh_handshake(ssh_session_t *s) {
     if (s->kex_algo == KEX_NONE) return -2; /* no common kex algorithm */
 
     switch (s->kex_algo) {
+    case KEX_CURVE25519_SHA256:
+        dh_prime = NULL; dh_size = 0; hash_len = 32;
+        break;
     case KEX_DH_GROUP14_SHA256:
         dh_prime = dh14_p; dh_size = DH14_SIZE; hash_len = 32;
         break;
@@ -488,91 +507,188 @@ static int ssh_handshake(ssh_session_t *s) {
     }
     s->hash_len = hash_len;
 
-    /* 6. DH Key Exchange */
-    bn_from_bytes(&p, dh_prime, dh_size);
+    if (s->kex_algo == KEX_CURVE25519_SHA256) {
+        /* ---- Curve25519 KEX (RFC 8731) ---- */
 
-    /* Generate private key x (256 bits) */
-    {
-        uint8_t xbuf[32];
-        urandom_bytes(xbuf, 32);
-        bn_from_bytes(&x, xbuf, 32);
-    }
+        /* Generate ephemeral keypair */
+        urandom_bytes(c25519_priv, 32);
+        x25519_public(c25519_pub, c25519_priv);
 
-    /* e = g^x mod p */
-    {
-        bn_t g;
-        bn_from_u32(&g, dh_g);
-        bn_modexp(&e, &g, &x, &p);
-    }
-    e_len = bn_to_bytes(&e, e_bytes + 1, dh_size);
-    if (e_bytes[1] & 0x80) { e_bytes[0] = 0; e_len++; }
-    else { memmove(e_bytes, e_bytes + 1, (size_t)e_len); }
-
-    /* Send KEXDH_INIT (e as mpint) */
-    {
-        uint8_t dh_init[DH14_SIZE + 10];
-        int dpos = 0;
-        dh_init[dpos++] = SSH_MSG_KEXDH_INIT;
-        dh_init[dpos++] = (uint8_t)(e_len >> 24);
-        dh_init[dpos++] = (uint8_t)(e_len >> 16);
-        dh_init[dpos++] = (uint8_t)(e_len >> 8);
-        dh_init[dpos++] = (uint8_t)e_len;
-        memcpy(dh_init + dpos, e_bytes, (size_t)e_len);
-        dpos += e_len;
-        if (ssh_send_packet(s, dh_init, dpos) < 0) return -1;
-    }
-
-    /* 7. Receive KEXDH_REPLY */
-    plen = ssh_recv_packet(s, payload, sizeof(payload));
-    if (plen < 0 || payload[0] != SSH_MSG_KEXDH_REPLY) return -1;
-
-    /* Parse: host_key(string) + f(mpint) + signature(string) */
-    {
-        int rpos = 1;
-        uint32_t hk_len, f_len;
-        uint8_t f_bytes[DH14_SIZE + 1];
-
-        /* save host key for exchange hash */
-        if (rpos + 4 > plen) return -1;
-        hk_len = ((uint32_t)payload[rpos] << 24) | ((uint32_t)payload[rpos + 1] << 16) |
-                 ((uint32_t)payload[rpos + 2] << 8) | (uint32_t)payload[rpos + 3];
-        if (hk_len <= sizeof(saved_host_key)) {
-            memcpy(saved_host_key, payload + rpos + 4, hk_len);
-            saved_host_key_len = hk_len;
+        /* Send KEX_ECDH_INIT: string Q_C (our public key, 32 bytes) */
+        {
+            uint8_t ecdh_init[64];
+            int dpos = 0;
+            uint32_t qlen = 32;
+            ecdh_init[dpos++] = SSH_MSG_KEXDH_INIT; /* type 30, same for ECDH */
+            ecdh_init[dpos++] = (uint8_t)(qlen >> 24);
+            ecdh_init[dpos++] = (uint8_t)(qlen >> 16);
+            ecdh_init[dpos++] = (uint8_t)(qlen >> 8);
+            ecdh_init[dpos++] = (uint8_t)qlen;
+            memcpy(ecdh_init + dpos, c25519_pub, 32);
+            dpos += 32;
+            if (ssh_send_packet(s, ecdh_init, dpos) < 0) return -1;
         }
-        rpos += 4 + (int)hk_len;
 
-        /* read f */
-        if (rpos + 4 > plen) return -1;
-        f_len = ((uint32_t)payload[rpos] << 24) | ((uint32_t)payload[rpos + 1] << 16) |
-                ((uint32_t)payload[rpos + 2] << 8) | (uint32_t)payload[rpos + 3];
-        rpos += 4;
-        if (f_len > (uint32_t)dh_size + 1 || rpos + (int)f_len > plen) return -1;
-        memcpy(f_bytes, payload + rpos, f_len);
-        memcpy(f_raw, f_bytes, f_len);
-        f_raw_len = (int)f_len;
+        /* Receive KEX_ECDH_REPLY */
+        plen = ssh_recv_packet(s, payload, sizeof(payload));
+        if (plen < 0 || payload[0] != SSH_MSG_KEXDH_REPLY) return -1;
 
-        /* strip leading zero if present */
-        if (f_bytes[0] == 0 && f_len > 1)
-            bn_from_bytes(&f, f_bytes + 1, (int)f_len - 1);
-        else
-            bn_from_bytes(&f, f_bytes, (int)f_len);
+        /* Parse: host_key(string) + Q_S(string, 32 bytes) + signature(string) */
+        {
+            int rpos = 1;
+            uint32_t hk_len, qs_len;
 
-        /* K = f^x mod p */
-        bn_modexp(&K, &f, &x, &p);
-    }
-    K_len = bn_to_bytes(&K, K_bytes + 1, dh_size);
-    if (K_bytes[1] & 0x80) { K_bytes[0] = 0; K_len++; }
-    else { memmove(K_bytes, K_bytes + 1, (size_t)K_len); }
+            if (rpos + 4 > plen) return -1;
+            hk_len = ((uint32_t)payload[rpos] << 24) | ((uint32_t)payload[rpos + 1] << 16) |
+                     ((uint32_t)payload[rpos + 2] << 8) | (uint32_t)payload[rpos + 3];
+            if (hk_len <= sizeof(saved_host_key)) {
+                memcpy(saved_host_key, payload + rpos + 4, hk_len);
+                saved_host_key_len = hk_len;
+            }
+            rpos += 4 + (int)hk_len;
 
-    /* 8. Compute exchange hash H */
-    if (hash_len == 32) {
-        /* SHA-256 */
-        sha256_ctx_t hctx;
-        uint8_t lbuf[4];
-        uint32_t vc_len = (uint32_t)strlen(ssh_client_banner) - 2; /* strip \r\n */
+            if (rpos + 4 > plen) return -1;
+            qs_len = ((uint32_t)payload[rpos] << 24) | ((uint32_t)payload[rpos + 1] << 16) |
+                     ((uint32_t)payload[rpos + 2] << 8) | (uint32_t)payload[rpos + 3];
+            rpos += 4;
+            if (qs_len != 32 || rpos + 32 > plen) return -1;
+            memcpy(c25519_server_pub, payload + rpos, 32);
+        }
 
-        sha256_init(&hctx);
+        /* Compute shared secret */
+        x25519(c25519_shared, c25519_priv, c25519_server_pub);
+
+        /* Encode shared secret as SSH mpint (big-endian, with sign padding) */
+        {
+            uint8_t K_be[33];
+            int i, start;
+            /* Shared secret raw bytes — treated as big-endian per OpenSSH convention */
+            for (i = 0; i < 32; i++) K_be[i + 1] = c25519_shared[i];
+            /* Skip leading zeros but keep sign bit correct */
+            start = 1;
+            while (start < 32 && K_be[start] == 0) start++;
+            if (K_be[start] & 0x80) { start--; K_be[start] = 0; } /* pad for positive */
+            K_len = 33 - start;
+            memcpy(K_bytes, K_be + start, (size_t)K_len);
+        }
+
+        /* Compute exchange hash H (SHA-256 for curve25519-sha256) */
+        {
+            sha256_ctx_t hctx;
+            uint8_t lbuf[4];
+            uint32_t vc_len = (uint32_t)strlen(ssh_client_banner) - 2;
+
+            sha256_init(&hctx);
+
+#define HASH_STR(data, len) do { \
+    uint32_t _l = (uint32_t)(len); \
+    lbuf[0]=(uint8_t)(_l>>24); lbuf[1]=(uint8_t)(_l>>16); \
+    lbuf[2]=(uint8_t)(_l>>8); lbuf[3]=(uint8_t)_l; \
+    sha256_update(&hctx, lbuf, 4); \
+    sha256_update(&hctx, (const uint8_t *)(data), _l); \
+} while(0)
+
+            HASH_STR(ssh_client_banner, vc_len);
+            HASH_STR(sbanner, slen);
+            HASH_STR(client_kexinit, client_kexinit_len);
+            HASH_STR(server_kexinit, server_kexinit_len);
+            HASH_STR(saved_host_key, saved_host_key_len);
+            HASH_STR(c25519_pub, 32);          /* Q_C */
+            HASH_STR(c25519_server_pub, 32);   /* Q_S */
+            HASH_STR(K_bytes, K_len);          /* K as mpint */
+
+#undef HASH_STR
+
+            sha256_finish(&hctx, H);
+        }
+    } else {
+        /* ---- Classic DH KEX ---- */
+
+        /* 6. DH Key Exchange */
+        bn_from_bytes(&p, dh_prime, dh_size);
+
+        /* Generate private key x (256 bits) */
+        {
+            uint8_t xbuf[32];
+            urandom_bytes(xbuf, 32);
+            bn_from_bytes(&x, xbuf, 32);
+        }
+
+        /* e = g^x mod p */
+        {
+            bn_t g;
+            bn_from_u32(&g, dh_g);
+            bn_modexp(&e, &g, &x, &p);
+        }
+        e_len = bn_to_bytes(&e, e_bytes + 1, dh_size);
+        if (e_bytes[1] & 0x80) { e_bytes[0] = 0; e_len++; }
+        else { memmove(e_bytes, e_bytes + 1, (size_t)e_len); }
+
+        /* Send KEXDH_INIT (e as mpint) */
+        {
+            uint8_t dh_init[DH14_SIZE + 10];
+            int dpos = 0;
+            dh_init[dpos++] = SSH_MSG_KEXDH_INIT;
+            dh_init[dpos++] = (uint8_t)(e_len >> 24);
+            dh_init[dpos++] = (uint8_t)(e_len >> 16);
+            dh_init[dpos++] = (uint8_t)(e_len >> 8);
+            dh_init[dpos++] = (uint8_t)e_len;
+            memcpy(dh_init + dpos, e_bytes, (size_t)e_len);
+            dpos += e_len;
+            if (ssh_send_packet(s, dh_init, dpos) < 0) return -1;
+        }
+
+        /* 7. Receive KEXDH_REPLY */
+        plen = ssh_recv_packet(s, payload, sizeof(payload));
+        if (plen < 0 || payload[0] != SSH_MSG_KEXDH_REPLY) return -1;
+
+        /* Parse: host_key(string) + f(mpint) + signature(string) */
+        {
+            int rpos = 1;
+            uint32_t hk_len, f_len;
+            uint8_t f_bytes[DH14_SIZE + 1];
+
+            /* save host key for exchange hash */
+            if (rpos + 4 > plen) return -1;
+            hk_len = ((uint32_t)payload[rpos] << 24) | ((uint32_t)payload[rpos + 1] << 16) |
+                     ((uint32_t)payload[rpos + 2] << 8) | (uint32_t)payload[rpos + 3];
+            if (hk_len <= sizeof(saved_host_key)) {
+                memcpy(saved_host_key, payload + rpos + 4, hk_len);
+                saved_host_key_len = hk_len;
+            }
+            rpos += 4 + (int)hk_len;
+
+            /* read f */
+            if (rpos + 4 > plen) return -1;
+            f_len = ((uint32_t)payload[rpos] << 24) | ((uint32_t)payload[rpos + 1] << 16) |
+                    ((uint32_t)payload[rpos + 2] << 8) | (uint32_t)payload[rpos + 3];
+            rpos += 4;
+            if (f_len > (uint32_t)dh_size + 1 || rpos + (int)f_len > plen) return -1;
+            memcpy(f_bytes, payload + rpos, f_len);
+            memcpy(f_raw, f_bytes, f_len);
+            f_raw_len = (int)f_len;
+
+            /* strip leading zero if present */
+            if (f_bytes[0] == 0 && f_len > 1)
+                bn_from_bytes(&f, f_bytes + 1, (int)f_len - 1);
+            else
+                bn_from_bytes(&f, f_bytes, (int)f_len);
+
+            /* K = f^x mod p */
+            bn_modexp(&K, &f, &x, &p);
+        }
+        K_len = bn_to_bytes(&K, K_bytes + 1, dh_size);
+        if (K_bytes[1] & 0x80) { K_bytes[0] = 0; K_len++; }
+        else { memmove(K_bytes, K_bytes + 1, (size_t)K_len); }
+
+        /* 8. Compute exchange hash H */
+        if (hash_len == 32) {
+            /* SHA-256 */
+            sha256_ctx_t hctx;
+            uint8_t lbuf[4];
+            uint32_t vc_len = (uint32_t)strlen(ssh_client_banner) - 2; /* strip \r\n */
+
+            sha256_init(&hctx);
 
 #define HASH256_STRING(data, len) do { \
     uint32_t _l = (uint32_t)(len); \
@@ -582,25 +698,25 @@ static int ssh_handshake(ssh_session_t *s) {
     sha256_update(&hctx, (const uint8_t *)(data), _l); \
 } while(0)
 
-        HASH256_STRING(ssh_client_banner, vc_len);
-        HASH256_STRING(sbanner, slen);
-        HASH256_STRING(client_kexinit, client_kexinit_len);
-        HASH256_STRING(server_kexinit, server_kexinit_len);
-        HASH256_STRING(saved_host_key, saved_host_key_len);
-        HASH256_STRING(e_bytes, e_len);
-        HASH256_STRING(f_raw, f_raw_len);
-        HASH256_STRING(K_bytes, K_len);
+            HASH256_STRING(ssh_client_banner, vc_len);
+            HASH256_STRING(sbanner, slen);
+            HASH256_STRING(client_kexinit, client_kexinit_len);
+            HASH256_STRING(server_kexinit, server_kexinit_len);
+            HASH256_STRING(saved_host_key, saved_host_key_len);
+            HASH256_STRING(e_bytes, e_len);
+            HASH256_STRING(f_raw, f_raw_len);
+            HASH256_STRING(K_bytes, K_len);
 
 #undef HASH256_STRING
 
-        sha256_finish(&hctx, H);
-    } else {
-        /* SHA-1 */
-        sha1_ctx hctx;
-        uint8_t lbuf[4];
-        uint32_t vc_len = (uint32_t)strlen(ssh_client_banner) - 2;
+            sha256_finish(&hctx, H);
+        } else {
+            /* SHA-1 */
+            sha1_ctx hctx;
+            uint8_t lbuf[4];
+            uint32_t vc_len = (uint32_t)strlen(ssh_client_banner) - 2;
 
-        sha1_init(&hctx);
+            sha1_init(&hctx);
 
 #define HASH1_STRING(data, len) do { \
     uint32_t _l = (uint32_t)(len); \
@@ -610,18 +726,19 @@ static int ssh_handshake(ssh_session_t *s) {
     sha1_update(&hctx, (const uint8_t *)(data), _l); \
 } while(0)
 
-        HASH1_STRING(ssh_client_banner, vc_len);
-        HASH1_STRING(sbanner, slen);
-        HASH1_STRING(client_kexinit, client_kexinit_len);
-        HASH1_STRING(server_kexinit, server_kexinit_len);
-        HASH1_STRING(saved_host_key, saved_host_key_len);
-        HASH1_STRING(e_bytes, e_len);
-        HASH1_STRING(f_raw, f_raw_len);
-        HASH1_STRING(K_bytes, K_len);
+            HASH1_STRING(ssh_client_banner, vc_len);
+            HASH1_STRING(sbanner, slen);
+            HASH1_STRING(client_kexinit, client_kexinit_len);
+            HASH1_STRING(server_kexinit, server_kexinit_len);
+            HASH1_STRING(saved_host_key, saved_host_key_len);
+            HASH1_STRING(e_bytes, e_len);
+            HASH1_STRING(f_raw, f_raw_len);
+            HASH1_STRING(K_bytes, K_len);
 
 #undef HASH1_STRING
 
-        sha1_final(&hctx, H);
+            sha1_final(&hctx, H);
+        }
     }
     memcpy(s->session_id, H, (size_t)hash_len);
 

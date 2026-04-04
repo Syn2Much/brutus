@@ -7,7 +7,7 @@ SRCS = main.c core/threadpool.c core/output.c core/target.c core/util.c \
        protocols/ssh.c protocols/mysql.c protocols/pgsql.c protocols/redis.c \
        protocols/telnet.c \
        crypto/sha256.c crypto/sha1.c crypto/md5.c \
-       crypto/aes128.c crypto/bignum.c crypto/pbkdf2.c
+       crypto/aes128.c crypto/bignum.c crypto/pbkdf2.c crypto/curve25519.c
 
 OBJS = $(SRCS:.c=.o)
 
