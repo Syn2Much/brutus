@@ -27,7 +27,7 @@ int redis_check_open(const char *ip, const redis_opts_t *opts) {
     fd = tcp_connect(ip, opts->port, opts->timeout);
     if (fd < 0) return -1;
 
-    if (redis_cmd(fd, "PING\r\n", resp, sizeof(resp)) > 0) {
+    if (redis_cmd(fd, "*1\r\n$4\r\nPING\r\n", resp, sizeof(resp)) > 0) {
         if (strncmp(resp, "+PONG", 5) == 0) {
             close(fd);
             return 1; /* open instance */
@@ -48,13 +48,15 @@ int redis_try(const char *ip, const char *user, const char *pass,
     fd = tcp_connect(ip, opts->port, opts->timeout);
     if (fd < 0) return -1;
 
-    /* Build AUTH command */
-    if (user) {
+    /* Build AUTH command (RESP protocol for binary-safe passwords) */
+    if (user && user[0]) {
         /* ACL auth (Redis 6+): AUTH username password */
-        snprintf(cmd, sizeof(cmd), "AUTH %s %s\r\n", user, pass);
+        snprintf(cmd, sizeof(cmd), "*3\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n",
+                 (int)strlen(user), user, (int)strlen(pass), pass);
     } else {
         /* Legacy auth: AUTH password */
-        snprintf(cmd, sizeof(cmd), "AUTH %s\r\n", pass);
+        snprintf(cmd, sizeof(cmd), "*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n",
+                 (int)strlen(pass), pass);
     }
 
     if (redis_cmd(fd, cmd, resp, sizeof(resp)) <= 0) {
@@ -69,7 +71,7 @@ int redis_try(const char *ip, const char *user, const char *pass,
 
     /* Hit -- fetch version info */
     if (version_out && versz > 0) {
-        if (redis_cmd(fd, "INFO server\r\n", resp, sizeof(resp)) > 0) {
+        if (redis_cmd(fd, "*2\r\n$4\r\nINFO\r\n$6\r\nserver\r\n", resp, sizeof(resp)) > 0) {
             char *rv = strstr(resp, "redis_version:");
             if (rv) {
                 rv += 14;

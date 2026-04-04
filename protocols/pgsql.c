@@ -3,11 +3,13 @@
    Adds SCRAM-SHA-256 (auth type 10) support for PostgreSQL 10+.
    Uses shared crypto/ instead of inline implementations. */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <poll.h>
 #include <stdint.h>
 
 #include "pgsql.h"
@@ -109,15 +111,26 @@ static int pgsql_build_startup(char *buf, int bufsz, const char *user,
 
 static void pgsql_fetch_version(int fd, char *version_out, int versz) {
     char buf[2048];
-    int n, attempts = 0;
+    int n;
+    struct pollfd pfd;
 
-    /* Wait for ReadyForQuery ('Z') */
-    while (attempts < 5) {
+    /* Drain any remaining post-auth messages (ParameterStatus, BackendKeyData,
+       ReadyForQuery). These may have been consumed by the auth recv, so use
+       a short poll to avoid blocking. */
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    while (poll(&pfd, 1, 200) > 0) {
         n = (int)recv(fd, buf, sizeof(buf) - 1, 0);
         if (n <= 0) break;
-        if (buf[0] == 'Z') break;
-        attempts++;
+        /* Check if ReadyForQuery was in this chunk */
+        {
+            int k;
+            for (k = 0; k < n; k++) {
+                if (buf[k] == 'Z' && k + 5 <= n) goto ready;
+            }
+        }
     }
+ready:
 
     /* Send SELECT version() */
     {
@@ -135,7 +148,9 @@ static void pgsql_fetch_version(int fd, char *version_out, int versz) {
         n = (int)recv(fd, buf, sizeof(buf) - 1, 0);
         if (n > 10) {
             buf[n] = '\0';
-            char *pg = strstr(buf, "PostgreSQL");
+            /* Wire protocol contains nulls, so strstr won't work.
+               Search the raw buffer for "PostgreSQL" with memmem. */
+            char *pg = (char *)memmem(buf, (size_t)n, "PostgreSQL", 10);
             if (pg) {
                 char *end = strchr(pg, ',');
                 if (!end) end = strchr(pg, ')');
@@ -362,6 +377,7 @@ static int pgsql_scram_auth(int fd, const char *user, const char *pass,
     /* q. Recv AuthenticationSASLFinal (auth_type=12) -- just accept */
     n = (int)recv(fd, buf, sizeof(buf) - 1, 0);
     if (n < 9) return -1;
+    if (buf[0] == 'E') return 0;  /* ErrorResponse = wrong password */
     if (buf[0] != 'R') return -1;
     {
         int auth_type = ((uint8_t)buf[5] << 24) | ((uint8_t)buf[6] << 16) |
