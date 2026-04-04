@@ -10,6 +10,7 @@ Standalone multi-protocol credential scanner. Pure C, zero external dependencies
 | MySQL | 3306 | mysql_native_password + 8.0 auth-switch | `@@version` |
 | PostgreSQL | 5432 | MD5, cleartext, trust, SCRAM-SHA-256 | `SELECT version()` |
 | Redis | 6379 | Legacy AUTH, ACL AUTH (6.0+), open-instance detection | `INFO server` |
+| Telnet | 23 | Login/password prompt (IAC negotiation) | Pre-login banner |
 
 ## Build
 

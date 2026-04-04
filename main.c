@@ -11,6 +11,7 @@
 #include "protocols/mysql.h"
 #include "protocols/pgsql.h"
 #include "protocols/redis.h"
+#include "protocols/telnet.h"
 
 typedef struct {
     const char *protocol;
@@ -21,6 +22,7 @@ typedef struct {
     mysql_opts_t mysql_opts;
     pgsql_opts_t pgsql_opts;
     redis_opts_t redis_opts;
+    telnet_opts_t telnet_opts;
     const char  *exec_cmd;
 } scan_ctx_t;
 
@@ -146,6 +148,29 @@ static void redis_worker(void *item, void *ctx)
     }
 }
 
+static void telnet_worker(void *item, void *ctx)
+{
+    const char *ip = (const char *)item;
+    scan_ctx_t *sc = (scan_ctx_t *)ctx;
+    char banner[256] = "";
+    int i;
+
+    for (i = 0; i < sc->creds->count; i++) {
+        const char *user = sc->creds->list[i].user ? sc->creds->list[i].user : "root";
+        const char *pass = sc->creds->list[i].pass;
+        int r = telnet_try(ip, user, pass, &sc->telnet_opts, banner, sizeof(banner));
+        if (r == 1) {
+            output_hit(sc->out, "telnet", ip, user, pass, banner);
+            break;
+        } else if (r == 0) {
+            output_miss(sc->out, "telnet", ip);
+        } else {
+            output_error(sc->out, "telnet", ip, "connect-error");
+            break;
+        }
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
 /* ------------------------------------------------------------------ */
@@ -182,7 +207,7 @@ static void usage(const char *prog)
     fprintf(stderr,
         "Usage: %s <protocol> [options]\n"
         "\n"
-        "Protocols: ssh, mysql, pgsql, redis\n"
+        "Protocols: ssh, mysql, pgsql, redis, telnet\n"
         "\n"
         "Options:\n"
         "  -T, --targets FILE       Target list (one IP/line)\n"
@@ -263,7 +288,8 @@ int main(int argc, char **argv)
     }
 
     if (strcmp(protocol, "ssh") != 0 && strcmp(protocol, "mysql") != 0 &&
-        strcmp(protocol, "pgsql") != 0 && strcmp(protocol, "redis") != 0) {
+        strcmp(protocol, "pgsql") != 0 && strcmp(protocol, "redis") != 0 &&
+        strcmp(protocol, "telnet") != 0) {
         fprintf(stderr, "error: unknown protocol '%s'\n", protocol);
         usage(argv[0]);
         return 1;
@@ -406,6 +432,12 @@ int main(int argc, char **argv)
         sc.redis_opts.exec_cmd = exec_cmd;
         if (port > 0) sc.redis_opts.port = port;
         worker_fn = redis_worker;
+    } else if (strcmp(protocol, "telnet") == 0) {
+        telnet_opts_t defaults = TELNET_DEFAULTS;
+        sc.telnet_opts = defaults;
+        sc.telnet_opts.timeout = timeout;
+        if (port > 0) sc.telnet_opts.port = port;
+        worker_fn = telnet_worker;
     }
 
     /* build void** target array */

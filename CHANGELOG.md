@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **Telnet protocol**: full IAC negotiation, login/password prompt detection, success/fail heuristics, banner extraction
 - **MySQL caching_sha2_password** (8.0+): fast-auth path, RSA-OAEP full-auth path, and bidirectional auth-switch (native↔sha2)
 - **Redis RESP wire protocol**: AUTH, PING, and INFO commands now use proper RESP framing instead of inline format
 - **Redis ACL AUTH**: RESP `*3` AUTH command for Redis 6+ username:password authentication
